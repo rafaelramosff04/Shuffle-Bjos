@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sorteio de Funções</title>
+<style>
+:root{--bg:#f6f5f2;--card:#ffffff;--text:#1d1d1b;--muted:#6b6b66;--accent:#2f6fdb;--border:#dcdad3}
+@media (prefers-color-scheme: dark){:root{--bg:#161615;--card:#21211f;--text:#eeeeea;--muted:#9a9a93;--accent:#6c9cf0;--border:#3a3a36}}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+body{padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;max-width:560px;margin:0 auto 14px;box-sizing:border-box}
+h1{font-size:20px;margin:0 0 4px}
+h2{font-size:15px;margin:0 0 10px}
+.muted{color:var(--muted);font-size:14px}
+label{display:block;margin-bottom:6px;font-size:14px}
+select,button,input[type="file"]{font:inherit;width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)}
+button{cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border:none}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;margin-top:12px}
+.row>*{flex:1}
+.fora{font-weight:600;border-left:4px solid var(--accent);padding:6px 10px;margin:0 0 12px}
+.linha{margin:4px 0;line-height:1.6;font-size:15px}
+.aviso{color:var(--muted);font-size:14px;min-height:18px;margin-top:8px}
+details summary{cursor:pointer;font-weight:600}
+.ciclo-hist{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Sorteio de Funções</h1>
+  <div id="ciclo" class="muted">Carregando...</div>
+</div>
+
+<div class="card">
+  <label for="livre">Quem é o vagabundo essa semana?</label>
+  <select id="livre"></select>
+  <div class="row">
+    <button id="sortear" class="primary">Sortear</button>
+    <button id="salvar" disabled>Salvar ciclo</button>
+  </div>
+  <div id="aviso" class="aviso"></div>
+</div>
+
+<div class="card" id="area-resultado" hidden>
+  <h2>Resultado</h2>
+  <div id="resultado"></div>
+</div>
+
+<div class="card">
+  <details>
+    <summary>Histórico</summary>
+    <div id="historico" class="muted" style="margin-top:10px">Sem ciclos salvos.</div>
+    <div class="ciclo-hist">
+      <label for="importar">Importar historico.json de uma versão anterior</label>
+      <input type="file" id="importar" accept=".json,application/json">
+    </div>
+  </details>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ====== COLE AQUI A CONFIGURAÇÃO DO SEU PROJETO FIREBASE ======
+const firebaseConfig = {
+  apiKey: "AIzaSyCIttkyB5qxoY_p7P5UtewA4fOr-2-3Bao",
+  authDomain: "shuffle-bjos.firebaseapp.com",
+  projectId: "shuffle-bjos",
+  storageBucket: "shuffle-bjos.firebasestorage.app",
+  messagingSenderId: "738160296199",
+  appId: "1:738160296199:web:0fdf89d422c39a8d31c5a2"
+};
+// ==============================================================
+
+const PESSOAS = [
+  "Akuira", "Binho", "Biobio", "Bobadilla", "Boninho", "Botelho", "Chuvis",
+  "Creu", "Dalan", "Grinch", "Malala", "Raposo", "Recruta"
+];
+
+const FUNCOES = [
+  "Cozinha", "Cozinha", "Cozinha",
+  "Sala", "Sala",
+  "Área Externa", "Área Externa", "Área Externa",
+  "Banheiros", "Corredor", "Panos", "Lavanderia"
+];
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let ciclos = [];
+let atual = null; // último sorteio feito, aguardando "Salvar ciclo"
+
+const $ = id => document.getElementById(id);
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function numeroCiclo() {
+  return ciclos.length + 1;
+}
+
+function recebidasPorPessoa() {
+  const r = {};
+  PESSOAS.forEach(p => r[p] = new Set());
+  ciclos.forEach(c => {
+    Object.entries(c.atribuicoes || {}).forEach(([p, f]) => {
+      if (r[p]) r[p].add(f);
+    });
+  });
+  return r;
+}
+
+function embaralhar(lista) {
+  const a = lista.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function sortearComHistorico(ativas, funcoes, recebidas, tentativas = 10000) {
+  let melhor = null;
+  let menorRep = Infinity;
+  for (let t = 0; t < tentativas; t++) {
+    const f = embaralhar(funcoes);
+    const at = {};
+    ativas.forEach((p, i) => at[p] = f[i]);
+    const rep = ativas.reduce((n, p) => n + (recebidas[p].has(at[p]) ? 1 : 0), 0);
+    if (rep === 0) return { at, rep: 0 };
+    if (rep < menorRep) { menorRep = rep; melhor = at; }
+  }
+  return { at: melhor, rep: menorRep };
+}
+
+function atualizarCiclo() {
+  $("ciclo").textContent = `Ciclo ${numeroCiclo()} - ${new Date().toLocaleDateString("pt-BR")}`;
+}
+
+function atualizarHistorico() {
+  const el = $("historico");
+  if (!ciclos.length) { el.textContent = "Sem ciclos salvos."; return; }
+  el.innerHTML = ciclos.slice().reverse().map(c => {
+    const linhas = Object.entries(c.atribuicoes || {})
+      .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+      .map(([p, f]) => `${esc(f)}: ${esc(p)}`).join("<br>");
+    return `<div class="ciclo-hist">
+      <b>Ciclo ${esc(c.ciclo)}</b> <span class="muted">(${esc(c.data || "")}) - fora: ${esc(c.livre || "-")}</span>
+      <div class="linha" style="font-size:14px">${linhas}</div>
+    </div>`;
+  }).join("");
+}
+
+function mostrarResultado(livre, at, rep) {
+  const porFuncao = {};
+  Object.entries(at).forEach(([p, f]) => {
+    (porFuncao[f] = porFuncao[f] || []).push(p);
+  });
+
+  let html = `<div class="fora">FORA DO SORTEIO: ${esc(livre.toUpperCase())}</div>`;
+  if (rep > 0) {
+    html += `<p class="muted">Não há mais combinações sem repetição. Repetições necessárias: ${rep}</p>`;
+  }
+  [...new Set(FUNCOES)].forEach(f => {
+    const nomes = (porFuncao[f] || []).join(" | ");
+    html += `<div class="linha"><b>${esc(f)}:</b> ${esc(nomes)}</div>`;
+  });
+
+  $("resultado").innerHTML = html;
+  $("area-resultado").hidden = false;
+}
+
+function sortear() {
+  const livre = $("livre").value;
+  const ativas = PESSOAS.filter(p => p !== livre);
+
+  if (ativas.length !== FUNCOES.length) {
+    $("aviso").textContent = `${ativas.length} pessoas ativas e ${FUNCOES.length} funções. Ajuste as listas.`;
+    return;
+  }
+
+  const { at, rep } = sortearComHistorico(ativas, FUNCOES, recebidasPorPessoa());
+  atual = { livre, at };
+  mostrarResultado(livre, at, rep);
+  $("salvar").disabled = false;
+  $("aviso").textContent = "Confira o resultado. Salve se estiver certo.";
+}
+
+async function salvar() {
+  if (!atual) return;
+  $("salvar").disabled = true;
+  try {
+    await setDoc(doc(db, "ciclos", "c" + Date.now()), {
+      ciclo: numeroCiclo(),
+      data: new Date().toISOString().slice(0, 10),
+      ts: Date.now(),
+      livre: atual.livre,
+      atribuicoes: atual.at,
+    });
+    $("aviso").textContent = "Ciclo salvo no histórico.";
+    $("area-resultado").hidden = true;
+    atual = null;
+  } catch (e) {
+    $("salvar").disabled = false;
+    $("aviso").textContent = "Não foi possível salvar: " + e.message;
+  }
+}
+
+async function importarArquivo(evento) {
+  const arquivo = evento.target.files[0];
+  if (!arquivo) return;
+  try {
+    const dados = JSON.parse(await arquivo.text());
+    const lista = dados.ciclos || [];
+    for (let i = 0; i < lista.length; i++) {
+      const c = lista[i];
+      await setDoc(doc(db, "ciclos", "import" + i), {
+        ciclo: c.ciclo,
+        data: c.data,
+        ts: i,
+        livre: c.livre,
+        atribuicoes: c.atribuicoes,
+      });
+    }
+    $("aviso").textContent = `${lista.length} ciclos importados.`;
+  } catch (e) {
+    $("aviso").textContent = "Erro ao importar: " + e.message;
+  }
+  evento.target.value = "";
+}
+
+function iniciar() {
+  $("livre").innerHTML = PESSOAS.map(p => `<option>${esc(p)}</option>`).join("");
+  $("sortear").addEventListener("click", sortear);
+  $("salvar").addEventListener("click", salvar);
+  $("importar").addEventListener("change", importarArquivo);
+  atualizarCiclo();
+
+  onSnapshot(collection(db, "ciclos"), snap => {
+    ciclos = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    atualizarCiclo();
+    atualizarHistorico();
+  }, err => {
+    $("aviso").textContent = "Erro ao carregar o histórico: " + err.message;
+  });
+}
+
+iniciar();
+</script>
+</body>
+</html>
