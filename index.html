@@ -34,6 +34,12 @@ details summary{cursor:pointer;font-weight:600}
   <div id="ciclo" class="muted">Carregando...</div>
 </div>
 
+<div class="card" style="text-align:center">
+  <canvas id="roleta" width="300" height="300" style="display:block;margin:0 auto;max-width:100%"></canvas>
+  <div id="vencedor" class="muted" style="margin:10px 0;min-height:20px"></div>
+  <button id="girar" class="primary">Girar roleta</button>
+</div>
+
 <div class="card">
   <label for="livre">Quem é o vagabundo essa semana?</label>
   <select id="livre"></select>
@@ -169,91 +175,4 @@ function mostrarResultado(livre, at, rep) {
   }
   [...new Set(FUNCOES)].forEach(f => {
     const nomes = (porFuncao[f] || []).join(" | ");
-    html += `<div class="linha"><b>${esc(f)}:</b> ${esc(nomes)}</div>`;
-  });
-
-  $("resultado").innerHTML = html;
-  $("area-resultado").hidden = false;
-}
-
-function sortear() {
-  const livre = $("livre").value;
-  const ativas = PESSOAS.filter(p => p !== livre);
-
-  if (ativas.length !== FUNCOES.length) {
-    $("aviso").textContent = `${ativas.length} pessoas ativas e ${FUNCOES.length} funções. Ajuste as listas.`;
-    return;
-  }
-
-  const { at, rep } = sortearComHistorico(ativas, FUNCOES, recebidasPorPessoa());
-  atual = { livre, at };
-  mostrarResultado(livre, at, rep);
-  $("salvar").disabled = false;
-  $("aviso").textContent = "Confira o resultado. Salve se estiver certo.";
-}
-
-async function salvar() {
-  if (!atual) return;
-  $("salvar").disabled = true;
-  try {
-    await setDoc(doc(db, "ciclos", "c" + Date.now()), {
-      ciclo: numeroCiclo(),
-      data: new Date().toISOString().slice(0, 10),
-      ts: Date.now(),
-      livre: atual.livre,
-      atribuicoes: atual.at,
-    });
-    $("aviso").textContent = "Ciclo salvo no histórico.";
-    $("area-resultado").hidden = true;
-    atual = null;
-  } catch (e) {
-    $("salvar").disabled = false;
-    $("aviso").textContent = "Não foi possível salvar: " + e.message;
-  }
-}
-
-async function importarArquivo(evento) {
-  const arquivo = evento.target.files[0];
-  if (!arquivo) return;
-  try {
-    const dados = JSON.parse(await arquivo.text());
-    const lista = dados.ciclos || [];
-    for (let i = 0; i < lista.length; i++) {
-      const c = lista[i];
-      await setDoc(doc(db, "ciclos", "import" + i), {
-        ciclo: c.ciclo,
-        data: c.data,
-        ts: i,
-        livre: c.livre,
-        atribuicoes: c.atribuicoes,
-      });
-    }
-    $("aviso").textContent = `${lista.length} ciclos importados.`;
-  } catch (e) {
-    $("aviso").textContent = "Erro ao importar: " + e.message;
-  }
-  evento.target.value = "";
-}
-
-function iniciar() {
-  $("livre").innerHTML = PESSOAS.map(p => `<option>${esc(p)}</option>`).join("");
-  $("sortear").addEventListener("click", sortear);
-  $("salvar").addEventListener("click", salvar);
-  $("importar").addEventListener("change", importarArquivo);
-  atualizarCiclo();
-
-  onSnapshot(collection(db, "ciclos"), snap => {
-    ciclos = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.ts || 0) - (b.ts || 0));
-    atualizarCiclo();
-    atualizarHistorico();
-  }, err => {
-    $("aviso").textContent = "Erro ao carregar o histórico: " + err.message;
-  });
-}
-
-iniciar();
-</script>
-</body>
-</html>
+    html += `<div class="linha"><b>${esc(f)}:</b>
