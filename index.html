@@ -70,7 +70,7 @@ details summary{cursor:pointer;font-weight:600}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// ====== COLE AQUI A CONFIGURAÇÃO DO SEU PROJETO FIREBASE ======
+// ====== CONFIGURAÇÃO DO SEU PROJETO FIREBASE ======
 const firebaseConfig = {
   apiKey: "AIzaSyCIttkyB5qxoY_p7P5UtewA4fOr-2-3Bao",
   authDomain: "shuffle-bjos.firebaseapp.com",
@@ -79,7 +79,7 @@ const firebaseConfig = {
   messagingSenderId: "738160296199",
   appId: "1:738160296199:web:0fdf89d422c39a8d31c5a2"
 };
-// ==============================================================
+// ==================================================
 
 const PESSOAS = [
   "Akuira", "Binho", "Biobio", "Bobadilla", "Boninho", "Botelho", "Chuvis",
@@ -175,4 +175,175 @@ function mostrarResultado(livre, at, rep) {
   }
   [...new Set(FUNCOES)].forEach(f => {
     const nomes = (porFuncao[f] || []).join(" | ");
-    html += `<div class="linha"><b>${esc(f)}:</b>
+    html += `<div class="linha"><b>${esc(f)}:</b> ${esc(nomes)}</div>`;
+  });
+
+  $("resultado").innerHTML = html;
+  $("area-resultado").hidden = false;
+}
+
+function sortear() {
+  const livre = $("livre").value;
+  const ativas = PESSOAS.filter(p => p !== livre);
+
+  if (ativas.length !== FUNCOES.length) {
+    $("aviso").textContent = `${ativas.length} pessoas ativas e ${FUNCOES.length} funções. Ajuste as listas.`;
+    return;
+  }
+
+  const { at, rep } = sortearComHistorico(ativas, FUNCOES, recebidasPorPessoa());
+  atual = { livre, at };
+  mostrarResultado(livre, at, rep);
+  $("salvar").disabled = false;
+  $("aviso").textContent = "Confira o resultado. Salve se estiver certo.";
+}
+
+async function salvar() {
+  if (!atual) return;
+  $("salvar").disabled = true;
+  try {
+    await setDoc(doc(db, "ciclos", "c" + Date.now()), {
+      ciclo: numeroCiclo(),
+      data: new Date().toISOString().slice(0, 10),
+      ts: Date.now(),
+      livre: atual.livre,
+      atribuicoes: atual.at,
+    });
+    $("aviso").textContent = "Ciclo salvo no histórico.";
+    $("area-resultado").hidden = true;
+    atual = null;
+  } catch (e) {
+    $("salvar").disabled = false;
+    $("aviso").textContent = "Não foi possível salvar: " + e.message;
+  }
+}
+
+async function importarArquivo(evento) {
+  const arquivo = evento.target.files[0];
+  if (!arquivo) return;
+  try {
+    const dados = JSON.parse(await arquivo.text());
+    const lista = dados.ciclos || [];
+    for (let i = 0; i < lista.length; i++) {
+      const c = lista[i];
+      await setDoc(doc(db, "ciclos", "import" + i), {
+        ciclo: c.ciclo,
+        data: c.data,
+        ts: i,
+        livre: c.livre,
+        atribuicoes: c.atribuicoes,
+      });
+    }
+    $("aviso").textContent = `${lista.length} ciclos importados.`;
+  } catch (e) {
+    $("aviso").textContent = "Erro ao importar: " + e.message;
+  }
+  evento.target.value = "";
+}
+
+// ====== ROLETA ======
+const CORES = ["#e63946", "#f4a261", "#2a9d8f", "#457b9d", "#8338ec", "#ffbe0b",
+  "#06d6a0", "#ef476f", "#118ab2", "#fb5607", "#3a86ff", "#ff006e", "#8ac926"];
+let angulo = 0;
+let girando = false;
+
+function desenharRoleta() {
+  const canvas = $("roleta");
+  const ctx = canvas.getContext("2d");
+  const r = canvas.width / 2;
+  const fatia = (2 * Math.PI) / PESSOAS.length;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  PESSOAS.forEach((nome, i) => {
+    const ini = angulo + i * fatia;
+    ctx.beginPath();
+    ctx.moveTo(r, r);
+    ctx.arc(r, r, r - 4, ini, ini + fatia);
+    ctx.closePath();
+    ctx.fillStyle = CORES[i % CORES.length];
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(r, r);
+    ctx.rotate(ini + fatia / 2);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(nome, r - 16, 5);
+    ctx.restore();
+  });
+
+  // ponteiro fixo no topo
+  ctx.beginPath();
+  ctx.moveTo(r - 12, 0);
+  ctx.lineTo(r + 12, 0);
+  ctx.lineTo(r, 24);
+  ctx.closePath();
+  ctx.fillStyle = "#1d1d1b";
+  ctx.fill();
+}
+
+function girarRoleta() {
+  if (girando) return;
+  girando = true;
+  $("girar").disabled = true;
+  $("vencedor").textContent = "";
+
+  const fatia = (2 * Math.PI) / PESSOAS.length;
+  const vencedor = Math.floor(Math.random() * PESSOAS.length);
+
+  // ângulo final em que a fatia do vencedor fica sob o ponteiro (topo)
+  const alvo = -Math.PI / 2 - (vencedor + 0.5) * fatia;
+  const inicio = angulo;
+  let delta = (alvo - inicio) % (2 * Math.PI);
+  if (delta < 0) delta += 2 * Math.PI;
+  const total = delta + 2 * Math.PI * (4 + Math.floor(Math.random() * 3));
+
+  const duracao = 4000;
+  const t0 = performance.now();
+
+  function quadro(agora) {
+    const p = Math.min((agora - t0) / duracao, 1);
+    const suavizado = 1 - Math.pow(1 - p, 3);
+    angulo = inicio + total * suavizado;
+    desenharRoleta();
+
+    if (p < 1) {
+      requestAnimationFrame(quadro);
+    } else {
+      girando = false;
+      $("girar").disabled = false;
+      const nome = PESSOAS[vencedor];
+      $("livre").value = nome;
+      $("vencedor").innerHTML = `Vagabundo: <b>${esc(nome)}</b>`;
+    }
+  }
+  requestAnimationFrame(quadro);
+}
+// ====== FIM DA ROLETA ======
+
+function iniciar() {
+  $("livre").innerHTML = PESSOAS.map(p => `<option>${esc(p)}</option>`).join("");
+  $("sortear").addEventListener("click", sortear);
+  $("salvar").addEventListener("click", salvar);
+  $("importar").addEventListener("change", importarArquivo);
+  $("girar").addEventListener("click", girarRoleta);
+  desenharRoleta();
+  atualizarCiclo();
+
+  onSnapshot(collection(db, "ciclos"), snap => {
+    ciclos = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    atualizarCiclo();
+    atualizarHistorico();
+  }, err => {
+    $("aviso").textContent = "Erro ao carregar o histórico: " + err.message;
+  });
+}
+
+iniciar();
+</script>
+</body>
+</html>
