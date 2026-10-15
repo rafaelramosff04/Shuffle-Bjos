@@ -158,12 +158,18 @@ function atualizarHistorico() {
   const el = $("historico");
   if (!ciclos.length) { el.textContent = "Sem ciclos salvos."; return; }
   el.innerHTML = ciclos.slice().reverse().map(c => {
-    const linhas = Object.entries(c.atribuicoes || {})
-      .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
-      .map(([p, f]) => `${esc(f)}: ${esc(p)}`).join("<br>");
+    const porFuncao = {};
+    Object.entries(c.atribuicoes || {}).forEach(([p, f]) => {
+      (porFuncao[f] = porFuncao[f] || []).push(p);
+    });
+
+    const linhas = [...new Set(FUNCOES)]
+      .map(f => `<b>${esc(f)}:</b> ${esc((porFuncao[f] || []).join(" | "))}`)
+      .join("<br>");
+
     return `<div class="ciclo-hist">
-      <b>Ciclo ${esc(c.ciclo)}</b> <span class="muted">(${esc(c.data || "")}) - fora: ${esc(c.livre || "-")}</span>
-      <div class="linha" style="font-size:14px">${linhas}</div>
+      <b>Ciclo ${esc(c.ciclo)}</b> <span class="muted">(${esc(c.data || "")}) - Vagabunde: ${esc(c.livre || "-")}</span>
+      <div class="linha" style="font-size:14px;margin-top:6px">${linhas}</div>
     </div>`;
   }).join("");
 }
