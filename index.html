@@ -55,6 +55,8 @@ details summary{cursor:pointer;font-weight:600}
   <div id="resultado"></div>
 </div>
 
+<button id="whatsapp" class="primary" style="display:block;margin:0 auto 14px;max-width:560px;width:calc(100% - 32px)" hidden>Enviar no WhatsApp</button>
+
 <div class="card">
   <details>
     <summary>Histórico</summary>
@@ -97,7 +99,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 let ciclos = [];
-let atual = null; // último sorteio feito, aguardando "Salvar ciclo"
+let atual = null;        // último sorteio feito, aguardando "Salvar ciclo"
+let ultimoSalvo = null;  // último ciclo salvo, usado no envio pelo WhatsApp
 
 const $ = id => document.getElementById(id);
 
@@ -195,6 +198,7 @@ function sortear() {
   atual = { livre, at };
   mostrarResultado(livre, at, rep);
   $("salvar").disabled = false;
+  $("whatsapp").hidden = true; // esconde o envio do ciclo anterior até salvar o novo
   $("aviso").textContent = "Confira o resultado. Salve se estiver certo.";
 }
 
@@ -202,15 +206,18 @@ async function salvar() {
   if (!atual) return;
   $("salvar").disabled = true;
   try {
-    await setDoc(doc(db, "ciclos", "c" + Date.now()), {
+    const registro = {
       ciclo: numeroCiclo(),
       data: new Date().toISOString().slice(0, 10),
       ts: Date.now(),
       livre: atual.livre,
       atribuicoes: atual.at,
-    });
+    };
+    await setDoc(doc(db, "ciclos", "c" + Date.now()), registro);
+    ultimoSalvo = registro;
     $("aviso").textContent = "Ciclo salvo no histórico.";
     $("area-resultado").hidden = true;
+    $("whatsapp").hidden = false;
     atual = null;
   } catch (e) {
     $("salvar").disabled = false;
@@ -240,6 +247,31 @@ async function importarArquivo(evento) {
   }
   evento.target.value = "";
 }
+
+// ====== WHATSAPP ======
+function textoWhatsApp(ciclo) {
+  const porFuncao = {};
+  Object.entries(ciclo.atribuicoes).forEach(([p, f]) => {
+    (porFuncao[f] = porFuncao[f] || []).push(p);
+  });
+
+  const linhas = [
+    `*Sorteio de Funções - Ciclo ${ciclo.ciclo}*`,
+    `Fora do sorteio: *${ciclo.livre}*`,
+    ""
+  ];
+  [...new Set(FUNCOES)].forEach(f => {
+    linhas.push(`*${f}:* ${(porFuncao[f] || []).join(" | ")}`);
+  });
+  return linhas.join("\n");
+}
+
+function enviarWhatsApp() {
+  if (!ultimoSalvo) return;
+  const texto = textoWhatsApp(ultimoSalvo);
+  window.open("https://wa.me/?text=" + encodeURIComponent(texto), "_blank");
+}
+// ====== FIM DO WHATSAPP ======
 
 // ====== ROLETA ======
 const CORES = ["#e63946", "#f4a261", "#2a9d8f", "#457b9d", "#8338ec", "#ffbe0b",
@@ -329,6 +361,7 @@ function iniciar() {
   $("salvar").addEventListener("click", salvar);
   $("importar").addEventListener("change", importarArquivo);
   $("girar").addEventListener("click", girarRoleta);
+  $("whatsapp").addEventListener("click", enviarWhatsApp);
   desenharRoleta();
   atualizarCiclo();
 
