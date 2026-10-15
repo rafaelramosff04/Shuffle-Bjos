@@ -24,6 +24,12 @@ button:disabled{opacity:.5;cursor:default}
 .aviso{color:var(--muted);font-size:14px;min-height:18px;margin-top:8px}
 details summary{cursor:pointer;font-weight:600}
 .ciclo-hist{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+.popup{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fade .2s ease}
+.popup-conteudo{background:var(--card);border:2px solid var(--accent);border-radius:16px;padding:32px 40px;text-align:center;max-width:90%}
+.popup-conteudo small{color:var(--muted);font-size:16px;text-transform:uppercase;letter-spacing:2px}
+.popup-conteudo .nome{display:block;font-size:40px;font-weight:700;margin-top:10px;color:var(--text)}
+[hidden]{display:none!important}
+@keyframes fade{from{opacity:0}to{opacity:1}}
 </style>
 </head>
 <body>
@@ -36,7 +42,7 @@ details summary{cursor:pointer;font-weight:600}
 <div class="card" style="text-align:center">
   <canvas id="roleta" width="300" height="300" style="display:block;margin:0 auto;max-width:100%"></canvas>
   <div id="vencedor" class="muted" style="margin:10px 0;min-height:20px"></div>
-  <button id="girar" class="primary">Sortear vagabunde</button>
+  <button id="girar" class="primary">Sortear vagabundo</button>
 </div>
 
 <div class="card">
@@ -44,7 +50,7 @@ details summary{cursor:pointer;font-weight:600}
   <select id="livre"></select>
   <div class="row">
     <button id="sortear" class="primary" style="background-color:#d38725;">Sortear funções</button>
-    <button id="salvar" disabled>Salvar sorteio</button>
+    <button id="salvar" disabled style="background-color:#1ea5f3;">Salvar sorteio</button>
   </div>
   <div id="aviso" class="aviso"></div>
 </div>
@@ -101,8 +107,9 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 let ciclos = [];
-let atual = null;        // último sorteio feito, aguardando "Salvar ciclo"
+let atual = null;        // último sorteio feito, aguardando "Salvar sorteio"
 let ultimoSalvo = null;  // último ciclo salvo, usado no envio pelo WhatsApp
+let disponiveis = [...PESSOAS]; // lista cópia de quem ainda pode ser vagabundo
 
 const $ = id => document.getElementById(id);
 
@@ -120,6 +127,10 @@ function formatarData(iso) {
 
 function numeroCiclo() {
   return ciclos.length + 1;
+}
+
+function vagabundosDisponiveis() {
+  return disponiveis.length ? disponiveis : PESSOAS;
 }
 
 function recebidasPorPessoa() {
@@ -157,7 +168,8 @@ function sortearComHistorico(ativas, funcoes, recebidas, tentativas = 10000) {
 }
 
 function atualizarCiclo() {
-  $("ciclo").textContent = `Ciclo ${numeroCiclo()} - ${new Date().toLocaleDateString("pt-BR")}`;
+  const faltam = vagabundosDisponiveis().length;
+  $("ciclo").textContent = `Ciclo ${numeroCiclo()} - ${new Date().toLocaleDateString("pt-BR")} · Faltam ${faltam} vagabundes`;
 }
 
 function atualizarHistorico() {
@@ -228,6 +240,12 @@ async function salvar() {
       atribuicoes: atual.at,
     };
     await setDoc(doc(db, "ciclos", "c" + Date.now()), registro);
+
+    // remove o vagabundo da lista cópia; se acabar, recomeça com todos
+    let restantes = vagabundosDisponiveis().filter(p => p !== atual.livre);
+    if (restantes.length === 0) restantes = [...PESSOAS];
+    await setDoc(doc(db, "config", "roleta"), { disponiveis: restantes });
+
     ultimoSalvo = registro;
     $("aviso").textContent = "Ciclo salvo. Pode enviar no Whatsapp.";
     $("area-resultado").hidden = true;
@@ -293,15 +311,87 @@ const CORES = ["#e63946", "#f4a261", "#2a9d8f", "#457b9d", "#8338ec", "#ffbe0b",
 let angulo = 0;
 let girando = false;
 
-function desenharRoleta() {
+// ====== SOM ======
+let audioCtx = null;
+function audio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+function tocar(freq, duracao, tipo = "square", volume = 0.08, atraso = 0) {
+  const ctx = audio();
+  const osc = ctx.createOscillator();
+  const ganho = ctx.createGain();
+  const t = ctx.currentTime + atraso;
+  osc.type = tipo;
+  osc.frequency.value = freq;
+  ganho.gain.setValueAtTime(volume, t);
+  ganho.gain.exponentialRampToValueAtTime(0.0001, t + duracao);
+  osc.connect(ganho).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + duracao);
+}
+
+const tick = () => tocar(1800, 0.03, "square", 0.05);
+
+function fanfarra() {
+  [523, 659, 784, 1047].forEach((f, i) => tocar(f, 0.25, "triangle", 0.12, i * 0.12));
+}
+
+// ====== CONFETES ======
+function confetes() {
+  const canvas = document.createElement("canvas");
+  canvas.style.cssText = "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1001";
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext("2d");
+
+  const cores = ["#e63946", "#f4a261", "#ffbe0b", "#06d6a0", "#3a86ff", "#ff006e", "#8338ec"];
+  const pecas = Array.from({ length: 160 }, () => ({
+    x: canvas.width / 2 + (Math.random() - 0.5) * 120,
+    y: canvas.height,
+    vx: (Math.random() - 0.5) * 16,
+    vy: -(Math.random() * 16 + 12),
+    tam: Math.random() * 6 + 5,
+    cor: cores[Math.floor(Math.random() * cores.length)],
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 0.3,
+  }));
+
+  let quadros = 0;
+  function animar() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pecas.forEach(p => {
+      p.vy += 0.35;
+      p.vx *= 0.99;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.cor;
+      ctx.fillRect(-p.tam / 2, -p.tam / 4, p.tam, p.tam / 2);
+      ctx.restore();
+    });
+    quadros++;
+    if (quadros < 200) requestAnimationFrame(animar);
+    else canvas.remove();
+  }
+  animar();
+}
+
+function desenharRoleta(nomes = vagabundosDisponiveis()) {
   const canvas = $("roleta");
   const ctx = canvas.getContext("2d");
   const r = canvas.width / 2;
-  const fatia = (2 * Math.PI) / PESSOAS.length;
+  const fatia = (2 * Math.PI) / nomes.length;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  PESSOAS.forEach((nome, i) => {
+  nomes.forEach((nome, i) => {
     const ini = angulo + i * fatia;
     ctx.beginPath();
     ctx.moveTo(r, r);
@@ -330,14 +420,33 @@ function desenharRoleta() {
   ctx.fill();
 }
 
+function mostrarPopup(nome) {
+  document.querySelector(".popup")?.remove();
+
+  const popup = document.createElement("div");
+  popup.className = "popup";
+  popup.innerHTML = `
+    <div class="popup-conteudo">
+      <small>Vagabunde da semana</small>
+      <span class="nome">${esc(nome)}</span>
+    </div>`;
+  document.body.appendChild(popup);
+
+  fanfarra();
+  confetes();
+  setTimeout(() => popup.remove(), 3000);
+}
+
 function girarRoleta() {
   if (girando) return;
+  const nomes = vagabundosDisponiveis();
   girando = true;
   $("girar").disabled = true;
   $("vencedor").textContent = "";
+  audio(); // libera o som, que precisa de um clique do usuário
 
-  const fatia = (2 * Math.PI) / PESSOAS.length;
-  const vencedor = Math.floor(Math.random() * PESSOAS.length);
+  const fatia = (2 * Math.PI) / nomes.length;
+  const vencedor = Math.floor(Math.random() * nomes.length);
 
   // ângulo final em que a fatia do vencedor fica sob o ponteiro (topo)
   const alvo = -Math.PI / 2 - (vencedor + 0.5) * fatia;
@@ -348,21 +457,31 @@ function girarRoleta() {
 
   const duracao = 4000;
   const t0 = performance.now();
+  let ultimoSetor = null;
 
   function quadro(agora) {
     const p = Math.min((agora - t0) / duracao, 1);
     const suavizado = 1 - Math.pow(1 - p, 3);
     angulo = inicio + total * suavizado;
-    desenharRoleta();
+    desenharRoleta(nomes);
+
+    // tique sempre que um setor passa pelo ponteiro
+    const rel = (((-Math.PI / 2 - angulo) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    const setor = Math.floor(rel / fatia);
+    if (setor !== ultimoSetor) {
+      ultimoSetor = setor;
+      tick();
+    }
 
     if (p < 1) {
       requestAnimationFrame(quadro);
     } else {
       girando = false;
       $("girar").disabled = false;
-      const nome = PESSOAS[vencedor];
+      const nome = nomes[vencedor];
       $("livre").value = nome;
       $("vencedor").innerHTML = `Vagabundo: <b>${esc(nome)}</b>`;
+      mostrarPopup(nome);
     }
   }
   requestAnimationFrame(quadro);
@@ -386,6 +505,14 @@ function iniciar() {
     atualizarHistorico();
   }, err => {
     $("aviso").textContent = "Erro ao carregar o histórico: " + err.message;
+  });
+
+  onSnapshot(doc(db, "config", "roleta"), snap => {
+    disponiveis = snap.exists() ? (snap.data().disponiveis || []) : [...PESSOAS];
+    atualizarCiclo();
+    if (!girando) desenharRoleta();
+  }, err => {
+    $("aviso").textContent = "Erro ao carregar a lista de vagabundos: " + err.message;
   });
 }
 
