@@ -112,6 +112,12 @@ function esc(s) {
   }[c]));
 }
 
+function formatarData(iso) {
+  if (!iso) return "";
+  const [ano, mes, dia] = iso.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
 function numeroCiclo() {
   return ciclos.length + 1;
 }
@@ -168,8 +174,11 @@ function atualizarHistorico() {
       .join("<br>");
 
     return `<div class="ciclo-hist">
-      <b>Ciclo ${esc(c.ciclo)}</b> <span class="muted">(${esc(c.data || "")}) - Vagabunde: ${esc(c.livre || "-")}</span>
-      <div class="linha" style="font-size:14px;margin-top:6px">${linhas}</div>
+      <div><b>Ciclo ${esc(c.ciclo)}</b> <span class="muted">(${esc(formatarData(c.data))})</span></div>
+      <div class="linha" style="font-size:14px;margin-top:6px">
+        <b>Vagabunde:</b> ${esc(c.livre || "-")}<br>
+        ${linhas}
+      </div>
     </div>`;
   }).join("");
 }
