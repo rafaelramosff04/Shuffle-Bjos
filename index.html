@@ -104,7 +104,7 @@ details summary{cursor:pointer;font-weight:600}
 
   <div class="card">
     <h2>Total de X</h2>
-    <div class="muted" style="margin-bottom:6px">Quem chega a 3 X paga a taxa. Ao registrar o pagamento, os X dessa pessoa zeram.</div>
+    <div class="muted" style="margin-bottom:6px">Quem chega a 3 X paga a taxa. O total soma os X manuais com os X das reuniões. Ao registrar o pagamento, só os X das reuniões zeram.</div>
     <div id="totais"></div>
   </div>
 
@@ -152,6 +152,7 @@ const db = getFirestore(app);
 let ciclos = [];
 let reunioes = [];
 let pagamentos = [];
+let xsManuais = {};      // X lançados à mão no Firebase (config/xs_manuais), um campo por pessoa
 let atual = null;        // último sorteio feito, aguardando "Salvar sorteio"
 let ultimoSalvo = null;  // último ciclo salvo, usado no envio pelo WhatsApp
 let disponiveis = [...PESSOAS]; // lista cópia de quem ainda pode ser vagabundo
@@ -565,18 +566,22 @@ function renderConferencia() {
     const temFuncao = !!f && f !== "vagabundo";
     let desc;
     if (f === "vagabundo") desc = "vagabundo na última rodada";
-    else if (temFuncao) desc = `função: ${f}`;
+    else if (temFuncao) desc = f;
     else desc = "sem função na última rodada";
-    return { nome, temFuncao, desc };
+    return { nome, funcao: f, temFuncao, desc };
   });
+
+  // Agrupa pela ordem das funções do sorteio (quem não teve função vai por último) e depois por nome
+  const ordem = [...new Set(FUNCOES)];
+  const posicao = c => c.temFuncao ? ordem.indexOf(c.funcao) : ordem.length;
+  conferencia.sort((a, b) => posicao(a) - posicao(b) || a.nome.localeCompare(b.nome, "pt-BR"));
 
   $("lista-conferencia").innerHTML = conferencia.map((c, i) => `
     <div class="conf">
       <div><b>${esc(c.nome)}</b> <span class="muted">${esc(c.desc)}</span></div>
       <label><input type="checkbox" id="fez-${i}" ${c.temFuncao ? "checked" : "disabled"}> Fez a função</label>
-      <label><input type="checkbox" id="falta-${i}"> Faltou à reunião sem justificativa</label>
+      <label><input type="checkbox" id="falta-${i}"> Falta na reunião</label>
     </div>`).join("");
-  $("aviso-faltas").textContent = "";
 }
 
 async function salvarReuniao() {
@@ -614,7 +619,7 @@ async function salvarReuniao() {
 }
 
 async function registrarPagamento(nome) {
-  if (!confirm(`Confirmar o pagamento da taxa de ${nome}? Os X dessa pessoa vão zerar.`)) return;
+  if (!confirm(`Confirmar o pagamento da taxa de ${nome}? Os X das reuniões dessa pessoa vão zerar. Os X manuais continuam como estão no Firebase.`)) return;
   try {
     await setDoc(doc(db, "pagamentos", "p" + Date.now()), { nome, ts: Date.now() });
   } catch (e) {
@@ -624,7 +629,7 @@ async function registrarPagamento(nome) {
 
 function renderTotais() {
   $("totais").innerHTML = PESSOAS.map(nome => {
-    const n = xsDesde(nome);
+    const n = Math.max(0, (Number(xsManuais[nome]) || 0) + xsDesde(nome));
     const marcas = n
       ? `<span class="xis">${"X".repeat(n)}</span>`
       : `<span class="muted">sem X</span>`;
@@ -713,6 +718,13 @@ function iniciar() {
     renderTotais();
   }, err => {
     $("aviso-faltas").textContent = "Erro ao carregar os pagamentos: " + err.message;
+  });
+
+  onSnapshot(doc(db, "config", "xs_manuais"), snap => {
+    xsManuais = snap.exists() ? snap.data() : {};
+    renderTotais();
+  }, err => {
+    $("aviso-faltas").textContent = "Erro ao carregar os X manuais: " + err.message;
   });
 }
 
