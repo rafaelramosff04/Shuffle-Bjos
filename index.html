@@ -48,6 +48,21 @@ details summary{cursor:pointer;font-weight:600}
 .pessoa-conf input[type="checkbox"]:checked{background-color:var(--accent);border-color:var(--accent);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3 3 7-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
 .pessoa-conf input[type="checkbox"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pessoa-conf input:disabled{cursor:default;opacity:.35}
+.linha-x{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.com-x .linha-x{font-size:16px}
+.deve-taxa{background:rgba(227,21,31,.14);border-radius:10px;padding:10px;margin:0 -10px;border-bottom-color:transparent}
+.acoes-x{margin-left:auto;display:flex;gap:8px}
+.acoes-x button{font-size:16px;width:70px;height:34px;padding:0;line-height:1;text-align:center;box-sizing:border-box}
+.acoes-x .x-pagar{font-size:17px;font-weight:700;color:#fff;background:transparent}
+.acoes-x .x-pagar:hover,.acoes-x .x-pagar:focus-visible{background:#fff;color:#1e1e1e}
+.x-remover{width:auto;padding:5px 12px;border:1px solid var(--accent);border-radius:999px;background:rgba(227,21,31,.15);color:var(--text);font-size:13px;font-weight:600}
+.x-remover:hover,.x-remover:focus-visible{background:var(--accent);border-color:var(--accent);color:#fff}
+.sem-x{color:var(--muted);font-weight:600;font-size:15px}
+.x-pagar{width:auto;padding:5px 12px;border:1px solid #fff;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:13px;font-weight:600}
+.x-pagar:hover,.x-pagar:focus-visible{background:#fff;color:#1e1e1e}
+.form-remocao{text-align:left;width:min(380px,100%);box-sizing:border-box;padding:24px}
+.form-remocao h2{font-size:17px;margin-bottom:14px}
+input[type="text"]{font:inherit;width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
 .reuniao-card{text-align:center}
 .contagem{font-size:36px;font-weight:700;margin:4px 0}
 .funcao-linha{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
@@ -57,6 +72,7 @@ details summary{cursor:pointer;font-weight:600}
 .chip{background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:14px;color:var(--text)}
 .placar-linha{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:15px}
 .placar-linha:last-child{border-bottom:none}
+.placar-linha.deve-taxa{padding:7px 10px}
 .xis{color:var(--perigo);font-weight:700;letter-spacing:2px}
 .perigo{color:var(--perigo);font-weight:600;font-size:14px}
 [hidden]{display:none!important}
@@ -94,15 +110,17 @@ details summary{cursor:pointer;font-weight:600}
 </div>
 
 <div id="aba-sorteio" hidden>
-  <div class="card" style="text-align:center">
+  <div class="card" id="card-roleta" style="text-align:center">
     <canvas id="roleta" width="300" height="300" style="display:block;margin:0 auto;max-width:100%"></canvas>
     <div id="vencedor" class="muted" style="margin:10px 0;min-height:20px"></div>
     <button id="girar" class="primary">Sortear vagabunde</button>
   </div>
 
   <div class="card">
-    <label for="livre">Vagabunde da semana</label>
-    <select id="livre"></select>
+    <div id="campo-livre">
+      <label for="livre">Vagabunde da semana</label>
+      <select id="livre"></select>
+    </div>
     <div class="row">
       <button id="sortear" class="primary" style="background-color:#fff;color:#1c0404;font-weight:600;">Sortear funções</button>
       <button id="salvar" disabled style="background-color:var(--accent);color:#fff;border:none;">Salvar sorteio</button>
@@ -140,15 +158,14 @@ details summary{cursor:pointer;font-weight:600}
   </div>
 
   <div class="card">
-    <h2>Total de X</h2>
-    <div class="muted" style="margin-bottom:6px">Quem chega a 3 X paga a taxa. O total soma os X manuais com os X das reuniões. Ao registrar o pagamento, só os X das reuniões zeram.</div>
+    <h2>Controle de X</h2>
     <div id="totais"></div>
   </div>
 
   <div class="card">
     <details>
-      <summary>Histórico de reuniões</summary>
-      <div id="hist-reunioes" class="muted" style="margin-top:10px">Nenhuma reunião salva.</div>
+      <summary>Histórico</summary>
+      <div id="hist-reunioes" class="muted" style="margin-top:10px">Nada registrado ainda.</div>
     </details>
   </div>
 </div>
@@ -169,12 +186,17 @@ const firebaseConfig = {
 // ==================================================
 
 const PESSOAS = [
-  "Akuira", "Binho", "Biobio", "Bobadilla", "Boninho", "Botelho", "Chuvis",
-  "Creu", "Dalan", "Grinch", "Malala", "Raposo", "Recruta"
+  "Akuira", "Biobio", "Bobadilla", "Boninho", "Chuvis",
+  "Creu", "Dalan", "Grinch", "Karol", "Malala", "Recruta"
 ];
 
+// Vagabunde (uma pessoa sem função na semana). Desligado por enquanto:
+// com false, todo mundo recebe função e a roleta some. Para voltar, troque para true
+// e deixe uma vaga a menos que o número de pessoas em FUNCOES.
+const USAR_VAGABUNDE = false;
+
 const FUNCOES = [
-  "Área Externa", "Área Externa", "Área Externa",
+  "Área Externa", "Área Externa",
   "Cozinha", "Cozinha", "Cozinha",
   "Sala", "Sala",
   "Banheiros",
@@ -189,6 +211,7 @@ const db = getFirestore(app);
 let ciclos = [];
 let reunioes = [];
 let pagamentos = [];
+let remocoes = [];       // X removidos pela plataforma (de quem, quando e por quê)
 let xsManuais = {};      // X lançados à mão no Firebase (config/xs_manuais), um campo por pessoa
 let atual = null;        // último sorteio feito, aguardando "Salvar sorteio"
 let ultimoSalvo = null;  // último ciclo salvo, usado no envio pelo WhatsApp
@@ -257,7 +280,8 @@ function sortearComHistorico(ativas, funcoes, recebidas, tentativas = 10000) {
 
 function atualizarCiclo() {
   const faltam = vagabundosDisponiveis().length;
-  $("ciclo").textContent = `Ciclo ${numeroCiclo()} - ${new Date().toLocaleDateString("pt-BR")} · Faltam ${faltam} vagabundes`;
+  $("ciclo").textContent = `Ciclo ${numeroCiclo()} - ${new Date().toLocaleDateString("pt-BR")}` +
+    (USAR_VAGABUNDE ? ` · Faltam ${faltam} vagabundes` : "");
 }
 
 function atualizarHistorico() {
@@ -276,7 +300,7 @@ function atualizarHistorico() {
     return `<div class="ciclo-hist">
       <div><b>Ciclo ${esc(c.ciclo)}</b> <span class="muted">(${esc(formatarData(c.data))})</span></div>
       <div class="linha" style="font-size:14px;margin-top:6px">
-        <b>Vagabunde:</b> ${esc(c.livre || "-")}<br>
+        ${c.livre ? `<b>Vagabunde:</b> ${esc(c.livre)}<br>` : ""}
         ${linhas}
       </div>
     </div>`;
@@ -289,7 +313,7 @@ function mostrarResultado(livre, at, rep) {
     (porFuncao[f] = porFuncao[f] || []).push(p);
   });
 
-  let html = `<div class="fora">VAGABUNDO: ${esc(livre.toUpperCase())}</div>`;
+  let html = livre ? `<div class="fora">VAGABUNDO: ${esc(livre.toUpperCase())}</div>` : "";
   [...new Set(FUNCOES)].forEach(f => {
     const nomes = (porFuncao[f] || []).join(" | ");
     html += `<div class="linha"><b>${esc(f)}:</b> ${esc(nomes)}</div>`;
@@ -300,7 +324,7 @@ function mostrarResultado(livre, at, rep) {
 }
 
 function sortear() {
-  const livre = $("livre").value;
+  const livre = USAR_VAGABUNDE ? $("livre").value : null; // sem vagabunde, todo mundo recebe função
   const ativas = PESSOAS.filter(p => p !== livre);
 
   if (ativas.length !== FUNCOES.length) {
@@ -330,9 +354,11 @@ async function salvar() {
     await setDoc(doc(db, "ciclos", "c" + Date.now()), registro);
 
     // remove o vagabundo da lista cópia; se acabar, recomeça com todos
-    let restantes = vagabundosDisponiveis().filter(p => p !== atual.livre);
-    if (restantes.length === 0) restantes = [...PESSOAS];
-    await setDoc(doc(db, "config", "roleta"), { disponiveis: restantes });
+    if (USAR_VAGABUNDE) {
+      let restantes = vagabundosDisponiveis().filter(p => p !== atual.livre);
+      if (restantes.length === 0) restantes = [...PESSOAS];
+      await setDoc(doc(db, "config", "roleta"), { disponiveis: restantes });
+    }
 
     ultimoSalvo = registro;
     $("aviso").textContent = "Ciclo salvo. Pode enviar no Whatsapp.";
@@ -377,7 +403,7 @@ function textoWhatsApp(ciclo) {
 
   const linhas = [
     `*Sorteio de Funções - Ciclo ${ciclo.ciclo}*`,
-    `Vagabundo: *${ciclo.livre}*`,
+    ...(ciclo.livre ? [`Vagabundo: *${ciclo.livre}*`] : []),
     ""
   ];
   [...new Set(FUNCOES)].forEach(f => {
@@ -585,14 +611,12 @@ function ultimaFuncao(nome) {
   return (ult.atribuicoes || {})[nome] || null;
 }
 
-// X acumulados desde o último pagamento da taxa
-function xsDesde(nome) {
-  const ultimoPagamento = pagamentos
-    .filter(p => p.nome === nome)
-    .reduce((m, p) => Math.max(m, p.ts || 0), 0);
-  return reunioes
-    .filter(r => (r.ts || 0) > ultimoPagamento)
-    .reduce((n, r) => n + ((r.xs || {})[nome] || 0), 0);
+// Cada pagamento da taxa desconta esta quantidade de X
+const XS_POR_PAGAMENTO = 3;
+
+// Total de X que a pessoa levou nas reuniões
+function xsReunioes(nome) {
+  return reunioes.reduce((n, r) => n + ((r.xs || {})[nome] || 0), 0);
 }
 
 // Emoji ao lado do nome de cada função na conferência
@@ -672,36 +696,110 @@ async function salvarReuniao() {
   }
 }
 
-async function registrarPagamento(nome) {
-  if (!confirm(`Confirmar o pagamento da taxa de ${nome}? Os X das reuniões dessa pessoa vão zerar. Os X manuais continuam como estão no Firebase.`)) return;
-  try {
-    await setDoc(doc(db, "pagamentos", "p" + Date.now()), { nome, ts: Date.now() });
-  } catch (e) {
-    $("aviso-faltas").textContent = "Não foi possível registrar o pagamento: " + e.message;
-  }
+// Janela de confirmação do pagamento, no mesmo estilo da janela de remover X
+function registrarPagamento(nome) {
+  document.querySelector(".popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "popup";
+  popup.innerHTML = `
+    <div class="popup-conteudo form-remocao" role="dialog" aria-modal="true" aria-labelledby="titulo-pagamento">
+      <h2 id="titulo-pagamento">${esc(nome)} pagou o X?</h2>
+      <div class="muted">Serão descontados ${XS_POR_PAGAMENTO} X. ${esc(nome)} tem ${totalXs(nome)} X e vai ficar com ${Math.max(0, totalXs(nome) - XS_POR_PAGAMENTO)}.</div>
+      <div id="pag-aviso" class="perigo" style="min-height:18px;margin-top:6px"></div>
+      <div class="row">
+        <button id="pag-cancelar">Cancelar</button>
+        <button id="pag-confirmar" class="primary">Confirmar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+  $("pag-cancelar").focus();
+
+  const fechar = () => popup.remove();
+  popup.addEventListener("click", e => { if (e.target === popup) fechar(); });
+  $("pag-cancelar").addEventListener("click", fechar);
+
+  $("pag-confirmar").addEventListener("click", async () => {
+    $("pag-confirmar").disabled = true;
+    try {
+      await setDoc(doc(db, "pagamentos", "p" + Date.now()), { nome, ts: Date.now() });
+      fechar();
+    } catch (e) {
+      $("pag-confirmar").disabled = false;
+      $("pag-aviso").textContent = "Não foi possível registrar o pagamento: " + e.message;
+    }
+  });
 }
 
-// Total de X da pessoa: X manuais do Firebase + X das reuniões desde o último pagamento
+// Total de X da pessoa: X manuais + X das reuniões − X removidos − 3 por pagamento
 function totalXs(nome) {
-  return Math.max(0, (Number(xsManuais[nome]) || 0) + xsDesde(nome));
+  const removidos = remocoes.filter(r => r.nome === nome).length;
+  const pagos = pagamentos.filter(p => p.nome === nome).length * XS_POR_PAGAMENTO;
+  return Math.max(0, (Number(xsManuais[nome]) || 0) + xsReunioes(nome) - removidos - pagos);
 }
 
 function renderTotais() {
   renderPlacar();
-  $("totais").innerHTML = PESSOAS.map(nome => {
+  // Quem tem X primeiro; quem não tem vai para baixo, com o nome em cinza
+  const comX = PESSOAS.filter(nome => totalXs(nome) > 0);
+  const semX = PESSOAS.filter(nome => totalXs(nome) <= 0);
+  $("totais").innerHTML = comX.map(nome => {
     const n = totalXs(nome);
-    const marcas = n
-      ? `<span class="xis">${"X".repeat(n)}</span>`
-      : `<span class="muted">sem X</span>`;
-    const alerta = n >= 3
-      ? `<div class="perigo">Taxa devida</div>
-         <button data-pag="${esc(nome)}" class="primary" style="margin-top:6px">Registrar pagamento</button>`
+    // Nome e X à esquerda; na mesma linha, à direita, os botões ✓ (pagou, só com 3 X ou mais) e ❌ (remover um X)
+    const pagar = n >= 3
+      ? `<button class="x-pagar" data-pag="${esc(nome)}" title="Pagou X" aria-label="${esc(nome)} pagou X">✓</button>`
       : "";
-    return `<div class="conf">
-      <div><b>${esc(nome)}</b> ${marcas}</div>
-      ${alerta}
+    // Quem precisa pagar (3 X ou mais) fica com o bloco num tom leve de vermelho
+    return `<div class="conf com-x${n >= 3 ? " deve-taxa" : ""}">
+      <div class="linha-x">
+        <b>${esc(nome)}</b>
+        <span class="xis">${"X".repeat(n)}</span>
+        <span class="acoes-x">
+          ${pagar}
+          <button class="x-remover" data-remover="${esc(nome)}" title="Remover X" aria-label="Remover um X de ${esc(nome)}">❌</button>
+        </span>
+      </div>
     </div>`;
-  }).join("");
+  }).join("") + semX.map(nome => `<div class="conf sem-x">${esc(nome)}</div>`).join("");
+}
+
+// Janela para remover um X: pede um comentário curto explicando o motivo
+function abrirRemocao(nome) {
+  document.querySelector(".popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "popup";
+  popup.innerHTML = `
+    <div class="popup-conteudo form-remocao" role="dialog" aria-modal="true" aria-labelledby="titulo-remocao">
+      <h2 id="titulo-remocao">Remover um X de ${esc(nome)}</h2>
+      <label for="rem-motivo">Por quê?</label>
+      <input type="text" id="rem-motivo" maxlength="140" placeholder="Ex.: Cortei a grama da frente">
+      <div id="rem-aviso" class="perigo" style="min-height:18px;margin-top:6px"></div>
+      <div class="row">
+        <button id="rem-cancelar">Cancelar</button>
+        <button id="rem-confirmar" class="primary">Remover X</button>
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+  $("rem-motivo").focus();
+
+  const fechar = () => popup.remove();
+  popup.addEventListener("click", e => { if (e.target === popup) fechar(); });
+  $("rem-cancelar").addEventListener("click", fechar);
+  $("rem-motivo").addEventListener("input", () => $("rem-aviso").textContent = "");
+
+  $("rem-confirmar").addEventListener("click", async () => {
+    const motivo = $("rem-motivo").value.trim();
+    if (!motivo) { $("rem-aviso").textContent = "Escreva um comentário curto."; return; }
+    if (totalXs(nome) <= 0) { $("rem-aviso").textContent = `${nome} não tem X para remover.`; return; }
+
+    $("rem-confirmar").disabled = true;
+    try {
+      await setDoc(doc(db, "remocoes", "x" + Date.now()), { nome, motivo, ts: Date.now(), data: hojeISO() });
+      fechar();
+    } catch (e) {
+      $("rem-confirmar").disabled = false;
+      $("rem-aviso").textContent = "Não foi possível remover: " + e.message;
+    }
+  });
 }
 
 // ====== INÍCIO (painel) ======
@@ -764,26 +862,40 @@ function renderPlacar() {
   if (!lista.length) { el.textContent = "Ninguém com X. 👏"; return; }
   el.classList.remove("muted");
   el.innerHTML = lista.map(p => `
-    <div class="placar-linha">
+    <div class="placar-linha${p.n >= 3 ? " deve-taxa" : ""}">
       <b>${esc(p.nome)}</b>
       <span class="xis">${"X".repeat(p.n)}</span>
-      ${p.n >= 3 ? `<span class="perigo">Taxa devida</span>` : ""}
     </div>`).join("");
 }
 // ====== FIM DO INÍCIO ======
 
+// Histórico único: reuniões, X removidos e taxas pagas, do mais recente para o mais antigo
 function renderHistoricoReunioes() {
   const el = $("hist-reunioes");
-  if (!reunioes.length) { el.textContent = "Nenhuma reunião salva."; return; }
-  el.innerHTML = reunioes.slice().reverse().map(r => {
-    const lista = Object.entries(r.xs || {})
-      .map(([nome, q]) => `${esc(nome)}: <span class="xis">${"X".repeat(q)}</span>`)
-      .join("<br>") || "Sem X";
-    return `<div class="ciclo-hist">
-      <div><b>${esc(formatarData(r.data))}</b></div>
-      <div class="linha" style="font-size:14px;margin-top:6px">${lista}</div>
-    </div>`;
-  }).join("");
+  const quando = ts => new Date(ts).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+
+  const itens = [
+    ...reunioes.map(r => ({
+      ts: r.ts || 0,
+      html: `<div><b>📋 Reunião de ${esc(formatarData(r.data))}</b></div>
+        <div class="linha" style="font-size:14px;margin-top:6px">${
+          Object.entries(r.xs || {}).map(([nome, q]) => `${esc(nome)}: <span class="xis">${"X".repeat(q)}</span>`).join("<br>") || "Sem X"
+        }</div>`,
+    })),
+    ...remocoes.map(r => ({
+      ts: r.ts || 0,
+      html: `<div><b>✂️ X removido de ${esc(r.nome)}</b> <span class="muted">· ${esc(quando(r.ts))}</span></div>
+        <div class="linha" style="font-size:14px;margin-top:4px">Motivo: “${esc(r.motivo)}”</div>`,
+    })),
+    ...pagamentos.map(p => ({
+      ts: p.ts || 0,
+      html: `<div><b>💰 ${esc(p.nome)} pagou X</b> <span class="muted">· ${esc(quando(p.ts))}</span></div>
+        <div class="linha" style="font-size:14px;margin-top:4px">${XS_POR_PAGAMENTO} X descontados.</div>`,
+    })),
+  ].sort((a, b) => b.ts - a.ts);
+
+  if (!itens.length) { el.textContent = "Nada registrado ainda."; return; }
+  el.innerHTML = itens.map(i => `<div class="ciclo-hist">${i.html}</div>`).join("");
 }
 
 function mostrarAba(nome) {
@@ -797,6 +909,9 @@ function mostrarAba(nome) {
 
 function iniciar() {
   $("livre").innerHTML = PESSOAS.map(p => `<option>${esc(p)}</option>`).join("");
+  // Sem vagabunde: esconde a roleta e a escolha do vagabunde
+  $("card-roleta").hidden = !USAR_VAGABUNDE;
+  $("campo-livre").hidden = !USAR_VAGABUNDE;
   $("sortear").addEventListener("click", sortear);
   $("salvar").addEventListener("click", salvar);
   $("girar").addEventListener("click", girarRoleta);
@@ -807,8 +922,9 @@ function iniciar() {
   );
   $("salvar-reuniao").addEventListener("click", salvarReuniao);
   $("totais").addEventListener("click", e => {
-    const nome = e.target.dataset.pag;
-    if (nome) registrarPagamento(nome);
+    const { pag, remover } = e.target.dataset;
+    if (pag) registrarPagamento(pag);
+    if (remover) abrirRemocao(remover);
   });
 
   desenharRoleta();
@@ -848,8 +964,17 @@ function iniciar() {
   onSnapshot(collection(db, "pagamentos"), snap => {
     pagamentos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderTotais();
+    renderHistoricoReunioes();
   }, err => {
     $("aviso-faltas").textContent = "Erro ao carregar os pagamentos: " + err.message;
+  });
+
+  onSnapshot(collection(db, "remocoes"), snap => {
+    remocoes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderTotais();
+    renderHistoricoReunioes();
+  }, err => {
+    $("aviso-faltas").textContent = "Erro ao carregar os X removidos: " + err.message;
   });
 
   onSnapshot(doc(db, "config", "xs_manuais"), snap => {
